@@ -1,6 +1,6 @@
 # Template para o botão "Deploy to DigitalOcean".
 # Obrigatório: chave raiz `spec:` (documentação DO).
-# Antes de publicar: troque YOUR_GITHUB_USER pelo seu usuário ou organização (deve bater com o link do botão no README).
+# Repo: https://github.com/andersoncardo/sefaz-bridge — em fork, ajuste repo_clone_url e o link do botão no README.
 
 spec:
   name: sefaz-bridge
@@ -14,7 +14,7 @@ spec:
       instance_size_slug: basic-xxs
       git:
         branch: main
-        repo_clone_url: https://github.com/YOUR_GITHUB_USER/sefaz-bridge.git
+        repo_clone_url: https://github.com/andersoncardo/sefaz-bridge.git
       health_check:
         http_path: /health
         initial_delay_seconds: 20

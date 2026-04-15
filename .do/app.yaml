@@ -1,5 +1,5 @@
 # App Spec — DigitalOcean App Platform
-# 1) Ajuste `github.repo` e `region`.
+# 1) Ajuste `region` se precisar (repo já definido).
 # 2) Cadastre no painel da app (Runtime → Environment Variables) os secrets:
 #    SEFAZ_BRIDGE_SECRET, CERT_ENCRYPTION_KEY, SPACES_KEY, SPACES_SECRET
 #    Opcional: BRIDGE_HMAC_SECRET, ADMIN_CERT_OVERRIDE_SECRET
@@ -13,7 +13,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: YOUR_GITHUB_ORG/sefaz-bridge
+      repo: andersoncardo/sefaz-bridge
       branch: main
       deploy_on_push: true
     http_port: 3000

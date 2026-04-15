@@ -6,15 +6,16 @@ Microserviço **Node.js 22 + TypeScript + Fastify** para integração técnica c
 
 > O botão oficial da DigitalOcean exige repositório **público** no GitHub (ou GitLab). Repositório privado: use *Apps → Create App → GitHub* manualmente.
 
-1. **Substitua** `YOUR_GITHUB_USER` em dois lugares pelo seu usuário ou organização:
-   - no link do botão abaixo;
-   - em [`.do/deploy.template.yaml`](.do/deploy.template.yaml), no campo `repo_clone_url` (deve ser o **mesmo** repositório que você está implantando).
-2. Faça **push** do repositório para o GitHub (branch `main`).
-3. Clique no botão — você será levado ao painel da DigitalOcean (faça login se precisar).
-4. No assistente, **revise as variáveis de ambiente** (especialmente as marcadas como secret). Ajuste `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` para o seu **Space**.
-5. Clique em **Deploy** e aguarde o build (Dockerfile + health em `/health`).
+Repositório oficial: **[github.com/andersoncardo/sefaz-bridge](https://github.com/andersoncardo/sefaz-bridge)**.
 
-[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/YOUR_GITHUB_USER/sefaz-bridge/tree/main)
+1. Garanta **push** na branch `main` (com `Dockerfile` e `.do/deploy.template.yaml` na raiz).
+2. Clique no botão — abre o painel da DigitalOcean (faça login se precisar).
+3. No assistente, **revise as variáveis de ambiente** (especialmente secrets). Ajuste `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` para o seu **Space**.
+4. Clique em **Deploy** e aguarde o build (Dockerfile + health em `/health`).
+
+> Se fizer **fork** do projeto, atualize o link do botão e o `repo_clone_url` em [`.do/deploy.template.yaml`](.do/deploy.template.yaml) para o seu `usuario/repositório`.
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/andersoncardo/sefaz-bridge/tree/main)
 
 Documentação do botão: [How to Add a "Deploy to DigitalOcean" Button](https://docs.digitalocean.com/products/app-platform/how-to/add-deploy-do-button/).
 
@@ -38,19 +39,18 @@ Siga na ordem na primeira vez; depois o botão ou o GitHub *deploy on push* cobr
 
 ### 3. Repositório GitHub
 
-1. Envie este projeto para um repositório GitHub (`main` com `Dockerfile` e `.do/deploy.template.yaml` na raiz).
-2. Para usar o **botão de deploy rápido**, o repositório precisa ser **público** (regra da DigitalOcean).
+1. Código em [github.com/andersoncardo/sefaz-bridge](https://github.com/andersoncardo/sefaz-bridge) na branch **`main`** (`Dockerfile` + `.do/deploy.template.yaml` na raiz).
+2. Para o **botão de deploy rápido**, o repositório precisa estar **público** (regra da DigitalOcean).
 
-### 4. Ajustar o template de um clique
+### 4. Template de um clique
 
-1. Abra [`.do/deploy.template.yaml`](.do/deploy.template.yaml).
-2. Troque `YOUR_GITHUB_USER` em `repo_clone_url` pelo seu usuário ou org (mesmo nome que aparece na URL do GitHub).
-3. Confira `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` no arquivo (ou altere depois no painel da app).
+1. O ficheiro [`.do/deploy.template.yaml`](.do/deploy.template.yaml) já aponta para `https://github.com/andersoncardo/sefaz-bridge.git`.
+2. Confira `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` no ficheiro (ou altere no painel da app após o deploy).
 
 ### 5. Implantar a app
 
 **Opção A — Botão (repositório público)**  
-Use o botão **Deploy to DigitalOcean** no topo deste README (com o link já apontando para `github.com/SEU_USUARIO/sefaz-bridge/tree/main`).
+Use o botão **Deploy to DigitalOcean** no topo deste README (aponta para `github.com/andersoncardo/sefaz-bridge/tree/main`).
 
 **Opção B — Painel (qualquer visibilidade do repo)**  
 1. **Apps** → **Create App** → **GitHub** → autorize e selecione o repositório e a branch `main`.  

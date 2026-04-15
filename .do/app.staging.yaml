@@ -1,4 +1,4 @@
-# Mesmo spec de produção com prefixo e branch de staging — ajuste `github.repo` e secrets no painel.
+# Staging: prefixo e branch develop — secrets no painel da DO.
 name: sefaz-bridge-staging
 region: nyc
 
@@ -7,7 +7,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: YOUR_GITHUB_ORG/sefaz-bridge
+      repo: andersoncardo/sefaz-bridge
       branch: develop
       deploy_on_push: true
     http_port: 3000

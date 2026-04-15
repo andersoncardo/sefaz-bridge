@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Bridge técnico para integração SOAP/mTLS com a SEFAZ (NFe Distribuição DFe)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andersoncardo/sefaz-bridge.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
