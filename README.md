@@ -169,7 +169,7 @@ openssl rand -base64 32
 | Variável | Descrição |
 |----------|-----------|
 | `SEFAZ_BRIDGE_SECRET` | Bearer interno. Obrigatório forte quando `APP_ENV` é `production` ou `staging`. |
-| `CERT_ENCRYPTION_KEY` | 32 bytes (**hex 64 chars** ou **base64**). Cifra PFX e senha antes do Spaces/disco. |
+| `CERT_ENCRYPTION_KEY` | 32 bytes: **64 caracteres hex** (`openssl rand -hex 32`) **ou** saída de `openssl rand -base64 32`. Na DO: variável **SECRET**, **uma linha só**, sem aspas; espaços e quebras são ignorados. |
 | `SPACES_KEY`, `SPACES_SECRET` | Credenciais Spaces. |
 | `BRIDGE_HMAC_SECRET` | Se definido, exige `X-Bridge-Timestamp` + `X-Bridge-Signature` nas rotas protegidas. |
 | `ADMIN_CERT_OVERRIDE_SECRET` | Se definido, permite header `X-Cert-Override-Token` igual ao segredo para aceitar certificado **expirado** no upload. |

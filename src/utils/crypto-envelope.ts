@@ -6,6 +6,25 @@ const IV_LEN = 12;
 const TAG_LEN = 16;
 const HEADER_LEN = 1 + IV_LEN + TAG_LEN;
 
+/** Remove BOM, quebras de linha e espaços (comum ao colar secret na DigitalOcean). */
+function normalizeKeyString(raw: string): string {
+  return raw
+    .replace(/^\uFEFF/, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function tryDecodeBase64Padded(s: string): Buffer {
+  const pad = (4 - (s.length % 4)) % 4;
+  return Buffer.from(s + '='.repeat(pad), 'base64');
+}
+
+/** Base64 “url-safe” (- _) → padrão (+ /) + padding. */
+function tryDecodeBase64Url(s: string): Buffer {
+  const std = s.replace(/-/g, '+').replace(/_/g, '/');
+  return tryDecodeBase64Padded(std);
+}
+
 function parseMasterKey(raw: string | undefined): Buffer {
   if (!raw?.trim()) {
     throw new AppError('CERT_ENCRYPTION_KEY não configurada', {
@@ -15,20 +34,45 @@ function parseMasterKey(raw: string | undefined): Buffer {
       category: 'internal',
     });
   }
-  const t = raw.trim();
+
+  let t = normalizeKeyString(raw);
+  if (!t) {
+    throw new AppError('CERT_ENCRYPTION_KEY vazia (apenas espaços?)', {
+      statusCode: 500,
+      code: 'MISSING_CERT_ENCRYPTION_KEY',
+      expose: false,
+      category: 'internal',
+    });
+  }
+  if (t.startsWith('0x') && /^0x[0-9a-fA-F]{64}$/.test(t)) {
+    t = t.slice(2);
+  }
+
   let key: Buffer;
   if (/^[0-9a-fA-F]{64}$/.test(t)) {
     key = Buffer.from(t, 'hex');
   } else {
     key = Buffer.from(t, 'base64');
+    if (key.length !== 32) {
+      key = tryDecodeBase64Padded(t);
+    }
+    if (key.length !== 32) {
+      key = tryDecodeBase64Url(t);
+    }
   }
+
   if (key.length !== 32) {
-    throw new AppError('CERT_ENCRYPTION_KEY deve decodificar para 32 bytes (AES-256)', {
-      statusCode: 500,
-      code: 'INVALID_CERT_ENCRYPTION_KEY',
-      expose: false,
-      category: 'internal',
-    });
+    throw new AppError(
+      `CERT_ENCRYPTION_KEY inválida: decodificou para ${key.length} bytes; são necessários exatamente 32 bytes (AES-256). ` +
+        `Gere localmente: openssl rand -base64 32  OU  openssl rand -hex 32. ` +
+        `Na DigitalOcean (Environment Variables), cole o valor em UMA linha, tipo SECRET, sem aspas nem espaços extras.`,
+      {
+        statusCode: 500,
+        code: 'INVALID_CERT_ENCRYPTION_KEY',
+        expose: false,
+        category: 'internal',
+      }
+    );
   }
   return key;
 }
