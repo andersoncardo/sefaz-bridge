@@ -25,6 +25,20 @@ function tryDecodeBase64Url(s: string): Buffer {
   return tryDecodeBase64Padded(std);
 }
 
+/** Só aceita base64 se o resultado tiver exatamente 32 bytes (evita lixo tipo “passphrase” → 19 bytes). */
+function decodeTo32ByteKey(t: string): Buffer | null {
+  const attempts: (() => Buffer)[] = [
+    () => Buffer.from(t, 'base64'),
+    () => tryDecodeBase64Padded(t),
+    () => tryDecodeBase64Url(t),
+  ];
+  for (const fn of attempts) {
+    const b = fn();
+    if (b.length === 32) return b;
+  }
+  return null;
+}
+
 function parseMasterKey(raw: string | undefined): Buffer {
   if (!raw?.trim()) {
     throw new AppError('CERT_ENCRYPTION_KEY não configurada', {
@@ -48,24 +62,13 @@ function parseMasterKey(raw: string | undefined): Buffer {
     t = t.slice(2);
   }
 
-  let key: Buffer;
   if (/^[0-9a-fA-F]{64}$/.test(t)) {
-    key = Buffer.from(t, 'hex');
-  } else {
-    key = Buffer.from(t, 'base64');
-    if (key.length !== 32) {
-      key = tryDecodeBase64Padded(t);
-    }
-    if (key.length !== 32) {
-      key = tryDecodeBase64Url(t);
-    }
+    return Buffer.from(t, 'hex');
   }
 
-  if (key.length !== 32) {
+  if (/^[0-9a-fA-F]+$/i.test(t)) {
     throw new AppError(
-      `CERT_ENCRYPTION_KEY inválida: decodificou para ${key.length} bytes; são necessários exatamente 32 bytes (AES-256). ` +
-        `Gere localmente: openssl rand -base64 32  OU  openssl rand -hex 32. ` +
-        `Na DigitalOcean (Environment Variables), cole o valor em UMA linha, tipo SECRET, sem aspas nem espaços extras.`,
+      `CERT_ENCRYPTION_KEY em hex deve ter exatamente 64 caracteres (saída de openssl rand -hex 32). Recebeu ${t.length}.`,
       {
         statusCode: 500,
         code: 'INVALID_CERT_ENCRYPTION_KEY',
@@ -74,7 +77,24 @@ function parseMasterKey(raw: string | undefined): Buffer {
       }
     );
   }
-  return key;
+
+  const fromB64 = decodeTo32ByteKey(t);
+  if (fromB64) return fromB64;
+
+  if (t.length >= 8 && t.length <= 512) {
+    return createHash('sha256').update(t, 'utf8').digest();
+  }
+
+  throw new AppError(
+    'CERT_ENCRYPTION_KEY muito curta (mínimo 8 caracteres) ou inválida. ' +
+      'Use openssl rand -hex 32, openssl rand -base64 32, ou uma passphrase forte (≥8 caracteres; será derivada com SHA-256).',
+    {
+      statusCode: 500,
+      code: 'INVALID_CERT_ENCRYPTION_KEY',
+      expose: false,
+      category: 'internal',
+    }
+  );
 }
 
 let cachedKey: Buffer | null = null;
