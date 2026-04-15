@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from './errors.js';
 
@@ -5,6 +6,12 @@ declare module 'fastify' {
   interface FastifyRequest {
     bridgeAuth?: true;
   }
+}
+
+function timingSafeTokenEq(token: string, expected: string): boolean {
+  const t = createHash('sha256').update(token, 'utf8').digest();
+  const e = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(t, e);
 }
 
 export function getExpectedSecret(): string {
@@ -15,6 +22,7 @@ export function getExpectedSecret(): string {
         statusCode: 500,
         code: 'MISSING_BRIDGE_SECRET',
         expose: false,
+        category: 'internal',
       });
     }
   }
@@ -27,12 +35,22 @@ export async function requireInternalAuth(
 ): Promise<void> {
   const auth = request.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
-    throw new AppError('Não autorizado', { statusCode: 401, code: 'UNAUTHORIZED', expose: true });
+    throw new AppError('Não autorizado', {
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+      expose: true,
+      category: 'auth',
+    });
   }
   const token = auth.slice('Bearer '.length).trim();
   const expected = getExpectedSecret();
-  if (!token || token !== expected) {
-    throw new AppError('Token inválido', { statusCode: 403, code: 'FORBIDDEN', expose: true });
+  if (!token || !timingSafeTokenEq(token, expected)) {
+    throw new AppError('Token inválido', {
+      statusCode: 403,
+      code: 'FORBIDDEN',
+      expose: true,
+      category: 'auth',
+    });
   }
   request.bridgeAuth = true;
 }

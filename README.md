@@ -1,170 +1,197 @@
 # sefaz-bridge
 
-Microserviço **Node.js + TypeScript** para integração técnica com a **SEFAZ** (SOAP 1.2 + **mTLS**), pensado para rodar na **DigitalOcean App Platform** separado do app principal (ex.: Lovable).
+Microserviço **Node.js 22 + TypeScript + Fastify** para integração técnica com a **SEFAZ** (SOAP 1.2 + **mTLS**), pensado para a **DigitalOcean App Platform** (stateless, sem volume persistente).
 
-## O que este projeto faz
+## O que faz
 
-- Recebe e armazena **certificado digital (.pfx)** por empresa (com senha e metadados).
-- Valida o PFX (incluindo cenários em que o **PFX legado** não abre nativamente no Node, usando **node-forge** para extrair PEM).
-- Executa chamadas **SOAP 1.2** com `Content-Type: application/soap+xml; charset=utf-8` usando **`https.Agent`** com **TLS 1.2+** e **SNI** automático.
-- Implementa o fluxo de **NFe Distribuição DFe** (`distDFeInt`), parseando a resposta e decodificando **`docZip`** (**base64 + gzip**).
-- Expõe endpoints internos protegidos por **Bearer token** (`SEFAZ_BRIDGE_SECRET`).
-- Emite **logs estruturados** (Pino). Com `LOG_LEVEL=debug`, registra o SOAP completo (request/response).
-
-> **Importante (App Platform):** o filesystem do container é **efêmero**. Para não perder certificados a cada deploy, configure um **Volume** montado no caminho usado por `CERT_STORAGE_PATH` (no Dockerfile de exemplo: `/data/certificates`).
+- Upload de **certificado A1 (.pfx)** com validação forte (senha, par certificado/chave, fingerprint SHA-256, CNPJ extraído, bloqueio de expirado com override administrativo opcional).
+- **Armazenamento remoto** em **DigitalOcean Spaces** (S3) com **cifrado em repouso** via envelope **AES-256-GCM** (`CERT_ENCRYPTION_KEY`) antes do upload.
+- Modo **local** (`STORAGE_DRIVER=local`) apenas para desenvolvimento: arquivos cifrados em disco, **sem senha em texto plano**.
+- Chamadas **SOAP 1.2** com timeout, **retry** só para falhas de rede transitórias, classificação de erros (`tls`, `soap`, `parse`, `auth`, `storage`, `internal`).
+- Autenticação **Bearer** + opcional **HMAC** com timestamp (anti-replay), **rate limiting**, **CORS** opcional, **`X-Request-Id`**.
+- **`GET /health`** com verificação do storage (HTTP **503** se o backend de certificados estiver indisponível).
 
 ## Requisitos
 
-- **Node.js 20+** (recomendado **22**, alinhado ao Dockerfile).
+- **Node.js 20+** (recomendado **22**).
+- **OpenSSL-compatible** runtime (imagem Debian slim no Docker).
 
-## Instalação
-
-```bash
-npm install
-```
-
-## Configuração (.env)
-
-Copie o exemplo:
+## Instalação e execução local
 
 ```bash
 cp .env.example .env
-```
-
-Variáveis principais:
-
-| Variável | Descrição |
-|----------|-----------|
-| `PORT` | Porta HTTP (padrão `3000`). |
-| `NODE_ENV` | `production` em produção. |
-| `SEFAZ_BRIDGE_SECRET` | Segredo interno para `Authorization: Bearer ...`. **Não use `change-me` em produção.** |
-| `CERT_STORAGE_PATH` | Diretório base onde ficam `company-<id>/certificate.pfx`, `passphrase.txt` e `meta.json`. |
-| `LOG_LEVEL` | `info`, `debug`, etc. Em `debug`, loga SOAP completo. |
-| `SEFAZ_DISTRIBUICAO_URL` | (Opcional) URL fixa do `.asmx`. Se omitido, usa URL **nacional** conforme `tpAmb` (`1` produção / `2` homologação). |
-
-## Rodar localmente
-
-```bash
+# Gere CERT_ENCRYPTION_KEY: openssl rand -base64 32
+npm install
 npm run dev
 ```
 
-Ou build + start:
+Gerar chave mestra de 32 bytes:
 
 ```bash
-npm run build
-npm start
+openssl rand -base64 32
 ```
 
-Healthcheck:
+## Variáveis de ambiente
 
-```bash
-curl -s http://localhost:3000/health
+### Públicas / operação
+
+| Variável | Descrição |
+|----------|-----------|
+| `PORT` | Porta HTTP. |
+| `NODE_ENV` | `production` na imagem Docker; uso típico de minificação/logs. |
+| `APP_ENV` | **`production`**, **`staging`** ou **`development`**. Controla exigência de **Spaces** e validação de secrets. |
+| `STORAGE_DRIVER` | `local` (dev) ou `spaces` (produção/staging na DO). |
+| `CERT_STORAGE_PATH` | Base do storage **local** cifrado (ignorado quando `spaces`). |
+| `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_ENDPOINT` | Configuração do bucket Spaces. |
+| `SPACES_PREFIX` | Prefixo de chaves por ambiente (ex.: `sefaz-bridge/production/`). |
+| `SEFAZ_DISTRIBUICAO_URL` | URL fixa do `.asmx` (senão usa padrão nacional por `tpAmb`). |
+| `SEFAZ_HTTP_TIMEOUT_MS` | Timeout HTTP (padrão `90000`). |
+| `SEFAZ_HTTP_MAX_RETRIES` | Retries só para rede (padrão `2`). |
+| `LOG_LEVEL` | `info`, `debug`, etc. |
+| `ALLOW_DEBUG_SOAP` | `true` para permitir log do SOAP completo (combinar com regras abaixo). |
+| `DEBUG_SOAP_IN_PROD` | `true` + `ALLOW_DEBUG_SOAP` para permitir SOAP completo com `NODE_ENV=production`. |
+| `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` | Limite global. |
+| `RATE_LIMIT_CERT_MAX`, `RATE_LIMIT_CERT_WINDOW` | Limite no upload de certificado. |
+| `CORS_ORIGINS` | Lista separada por vírgula; vazio = sem CORS (recomendado server-to-server). |
+| `BRIDGE_HMAC_MAX_SKEW_SEC` | Janela do relógio para HMAC (padrão `300`). |
+
+### Secrets (nunca commitar)
+
+| Variável | Descrição |
+|----------|-----------|
+| `SEFAZ_BRIDGE_SECRET` | Bearer interno. Obrigatório forte quando `APP_ENV` é `production` ou `staging`. |
+| `CERT_ENCRYPTION_KEY` | 32 bytes (**hex 64 chars** ou **base64**). Cifra PFX e senha antes do Spaces/disco. |
+| `SPACES_KEY`, `SPACES_SECRET` | Credenciais Spaces. |
+| `BRIDGE_HMAC_SECRET` | Se definido, exige `X-Bridge-Timestamp` + `X-Bridge-Signature` nas rotas protegidas. |
+| `ADMIN_CERT_OVERRIDE_SECRET` | Se definido, permite header `X-Cert-Override-Token` igual ao segredo para aceitar certificado **expirado** no upload. |
+
+### Desenvolvimento
+
+| Variável | Descrição |
+|----------|-----------|
+| `CERT_ALLOW_EXPIRED_DEV` | `true` + `NODE_ENV !== production` permite certificado expirado sem override. |
+
+## Autenticação
+
+### Bearer (obrigatório)
+
+```http
+Authorization: Bearer <SEFAZ_BRIDGE_SECRET>
 ```
+
+### HMAC opcional
+
+Se `BRIDGE_HMAC_SECRET` estiver definido, envie também:
+
+```http
+X-Bridge-Timestamp: <unix segundos>
+X-Bridge-Signature: <hex HMAC-SHA256>
+```
+
+Payload canônico:
+
+`v1:<ts>:<METHOD>:<path>:<corpo>`
+
+- `GET`/`HEAD`: corpo = `empty`
+- JSON: corpo = SHA-256 hex de `stableStringify` do objeto JSON parseado (mesma ordenação de chaves que o servidor).
+- Multipart (upload certificado): corpo fixo = `multipart:company-certificate-upload`
 
 ## Endpoints
 
-### `GET /health` (público)
+### `GET /health`
 
-```bash
-curl -s http://localhost:3000/health
-```
+Público. Verifica storage (Spaces `HeadBucket` ou disco local). Resposta inclui `uptime_seconds`, `app_env`, `storage`.
 
-### `POST /api/companies/:companyId/certificate` (autenticado)
+### `POST /api/companies/:companyId/certificate`
 
-Multipart (`multipart/form-data`):
+Multipart: `certificate`, `password`; opcional `cnpj` (se 14 dígitos, deve bater com o CNPJ do certificado).
 
-- `certificate`: arquivo `.pfx` ou `.p12`
-- `password`: senha do certificado
-- Opcional: `cnpj`, `uf`, `tpAmb`
+Override de expirado: header `X-Cert-Override-Token` quando `ADMIN_CERT_OVERRIDE_SECRET` está configurado.
 
-```bash
-curl -sS -X POST "http://localhost:3000/api/companies/1/certificate" \
-  -H "Authorization: Bearer $SEFAZ_BRIDGE_SECRET" \
-  -F "certificate=@/caminho/empresa.pfx" \
-  -F "password=SUA_SENHA_AQUI"
-```
+### `POST /api/sefaz/distribuicao`
 
-### `POST /api/sefaz/distribuicao` (autenticado)
+JSON: `companyId`, `cnpj`, `cUF`, `tpAmb`, `ultNSU`.
 
-```bash
-curl -sS -X POST "http://localhost:3000/api/sefaz/distribuicao" \
-  -H "Authorization: Bearer $SEFAZ_BRIDGE_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "companyId": 1,
-    "cnpj": "08174605000100",
-    "cUF": "21",
-    "tpAmb": "1",
-    "ultNSU": "000000000000000"
-  }'
-```
+## Layout de storage
 
-## Onde o certificado fica armazenado
+### Spaces (`STORAGE_DRIVER=spaces`)
 
-Por padrão (filesystem), cada empresa possui um diretório:
+Objetos por empresa sob `${SPACES_PREFIX}companies/<id>/`:
 
-```text
-${CERT_STORAGE_PATH}/company-<companyId>/
-  certificate.pfx
-  passphrase.txt
-  meta.json
-```
+- `material.blob` — senha cifrada + PFX cifrado (formato interno).
+- `meta.json` — metadados (subject, issuer, validade, fingerprint, CNPJ do cert, etc.). **Sem segredos em claro.**
 
-A interface `IStorageService` em `src/services/storage.service.ts` isola o storage para evolução futura (ex.: **Spaces/S3**) sem reescrever controllers.
+Rotação: no novo upload, objetos anteriores da empresa são removidos antes de gravar.
 
-## Onde configurar o secret interno
+### Local (`STORAGE_DRIVER=local`)
 
-- **Local:** arquivo `.env` → `SEFAZ_BRIDGE_SECRET`.
-- **DigitalOcean App Platform:** *Settings* → *App-Level Environment Variables* → defina `SEFAZ_BRIDGE_SECRET` como **SECRET**.
-- **App principal (Lovable):** configure o mesmo valor em variável segura do backend e envie `Authorization: Bearer ...` em todas as chamadas ao bridge.
+`company-<id>/certificate.pfx.enc` (conteúdo combinado cifrado) + `meta.json`. Somente para **desenvolvimento**.
+
+## DigitalOcean App Platform
+
+1. Crie um **Space** e chaves de API com acesso ao bucket.
+2. Crie a **App** a partir do repositório (Dockerfile) **ou** importe `.do/app.yaml` (ajuste `github.repo`, `region`, bucket e prefixos).
+3. Configure **Runtime Environment**:
+   - `APP_ENV=production` (ou `staging`)
+   - `STORAGE_DRIVER=spaces`
+   - Secrets: `SEFAZ_BRIDGE_SECRET`, `CERT_ENCRYPTION_KEY`, `SPACES_KEY`, `SPACES_SECRET`
+   - Variáveis públicas: bucket, region, endpoint, `SPACES_PREFIX`, URLs SEFAZ, limites.
+4. Health check HTTP: **`/health`** (a app spec de exemplo já define `health_check.http_path`).
+5. **Não** dependa de volume persistente: certificados vivem no **Spaces** cifrados.
+
+## Deploy automático (GitHub Actions)
+
+Configure no repositório:
+
+- **Secret:** `DIGITALOCEAN_ACCESS_TOKEN`
+- **Variable:** `DO_APP_ID` — ID numérico da app (painel DO → URL ou API).
+
+Workflows:
+
+| Arquivo | Comportamento |
+|---------|----------------|
+| `.github/workflows/deploy-do.yml` | Push em `main` → `POST /v2/apps/{app}/deployments` (redeploy; código vem do GitHub ligado à app). |
+| `.github/workflows/deploy-staging-do.yml` | Push em `develop` → mesmo padrão, usando `DO_APP_ID_STAGING` (se vazio, **skip**). |
+| `.github/workflows/deploy-app-spec.yml` | Alterações em `.do/**` ou disparo manual → `doctl apps update --spec` (spec versionado). |
+
+Use **ou** redeploy simples **ou** atualização por spec conforme seu fluxo; evite duplicar lógica conflitante na mesma pipeline sem necessidade.
 
 ## Docker
-
-Build local da imagem:
 
 ```bash
 docker build -t sefaz-bridge:local .
 docker run --rm -p 3000:3000 \
-  -e SEFAZ_BRIDGE_SECRET="troque-isso" \
-  -e LOG_LEVEL=info \
+  -e APP_ENV=development \
+  -e STORAGE_DRIVER=local \
+  -e CERT_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  -e SEFAZ_BRIDGE_SECRET="dev-secret" \
   sefaz-bridge:local
 ```
 
-A imagem usa `USER node` e grava certificados em `/data/certificates` por padrão.
-
-## Deploy na DigitalOcean App Platform (resumo)
-
-1. Crie um **App** a partir deste repositório (Dockerfile) ou faça push da imagem para o Container Registry e referencie no App Spec.
-2. Defina as variáveis de ambiente (`SEFAZ_BRIDGE_SECRET`, `LOG_LEVEL`, etc.).
-3. Configure **HTTP route** na porta exposta (`3000` internamente; a DO injeta `PORT` — mantenha o servidor escutando `process.env.PORT`).
-4. **Volume (recomendado):** adicione um volume persistente e monte em `/data/certificates` (ou ajuste `CERT_STORAGE_PATH` para o mount path informado pela DO).
-5. Health check HTTP: `GET /health`.
-
-Consulte a documentação oficial da DigitalOcean sobre [App Platform](https://docs.digitalocean.com/products/app-platform/) para detalhes de build, domínios e secrets.
-
-## Cloudflare (subdomínio)
-
-1. Na DigitalOcean, anote o **hostname** público do App (ou configure um domínio customizado no App).
-2. No Cloudflare, crie um registro **CNAME** (ex.: `sefaz-bridge.seudominio.com`) apontando para o hostname do App (ou use **proxied** laranja conforme sua estratégia de TLS).
-3. Garanta que o modo SSL/TLS do Cloudflare seja compatível com o seu cenário (tipicamente **Full (strict)** quando a origem apresenta certificado válido).
-
-> Se o bridge for consumido **somente** por backends (Lovable/server), considere **não expor** publicamente e usar rede privada/VPN conforme a arquitetura da DO.
+Na **App Platform**, defina `APP_ENV` e `STORAGE_DRIVER=spaces` via env da app (não só `NODE_ENV`).
 
 ## Segurança e logs
 
-- **Não** logue senha do certificado, chave privada ou conteúdo binário do PFX.
-- É permitido logar **subject**, **issuer**, **validade**, **companyId**, **cStat**, **xMotivo** e contexto de falha.
-- Em `LOG_LEVEL=debug`, o SOAP completo é logado — use apenas em diagnóstico.
+- Não são logados: senha do certificado, PEM completo, corpo SOAP em produção **salvo** `ALLOW_DEBUG_SOAP` / `DEBUG_SOAP_IN_PROD`.
+- CNPJ em logs aparece **mascarado** quando aplicável.
+- Respostas de erro expõem `category` para diagnóstico (`tls`, `soap`, `parse`, `auth`, `storage`, `internal`).
 
-## Scripts npm
+## Estrutura relevante
+
+- `src/services/storage/` — `IStorageService`, `LocalStorageService`, `SpacesStorageService`, fábrica.
+- `src/utils/crypto-envelope.ts` — AES-256-GCM.
+- `src/utils/bridge-guard.ts` — Bearer + HMAC opcional.
+- `src/config/bootstrap.ts` — validação de ambiente na subida.
+
+## Cloudflare
+
+Crie um **CNAME** para o hostname da App Platform (ou domínio customizado configurado na DO). Para consumo **somente server-to-server**, prefira não expor publicamente ou restrinja por IP / Zero Trust, conforme sua arquitetura.
+
+## Scripts
 
 | Script | Descrição |
 |--------|-----------|
-| `npm run dev` | Desenvolvimento com `tsx watch`. |
+| `npm run dev` | `tsx watch`. |
 | `npm run build` | Compila para `dist/`. |
-| `npm start` | Executa `dist/server.js`. |
+| `npm start` | Produção. |
 | `npm run typecheck` | `tsc --noEmit`. |
-
-## Escopo da versão 1
-
-Sem banco, sem fila, sem regras tributárias — apenas **bridge técnico** SOAP/mTLS + armazenamento simples de certificado.

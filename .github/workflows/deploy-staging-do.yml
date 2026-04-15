@@ -1,0 +1,31 @@
+# Opcional: staging em branch develop — configure DO_APP_ID_STAGING.
+name: deploy-digitalocean-staging
+
+on:
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: deploy-do-staging
+  cancel-in-progress: true
+
+jobs:
+  trigger-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar deployment (staging)
+        env:
+          DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          DO_APP_ID: ${{ vars.DO_APP_ID_STAGING }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DO_API_TOKEN:-}" ] || [ -z "${DO_APP_ID:-}" ]; then
+            echo "Skipping: defina DIGITALOCEAN_ACCESS_TOKEN e DO_APP_ID_STAGING para habilitar deploy de staging."
+            exit 0
+          fi
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.digitalocean.com/v2/apps/${DO_APP_ID}/deployments" \
+            -d '{}'

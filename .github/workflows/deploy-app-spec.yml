@@ -1,0 +1,42 @@
+# Atualiza a App Platform a partir do App Spec versionado (doctl).
+# Requer: DIGITALOCEAN_ACCESS_TOKEN + DO_APP_ID
+# Opcional: defina SPEC_FILE (padrão .do/app.yaml)
+name: deploy-app-spec
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+    paths:
+      - '.do/**'
+      - '.github/workflows/deploy-app-spec.yml'
+
+concurrency:
+  group: deploy-do-app-spec
+  cancel-in-progress: true
+
+jobs:
+  apply-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Aplicar App Spec
+        env:
+          DO_APP_ID: ${{ vars.DO_APP_ID }}
+          SPEC_FILE: ${{ vars.DO_SPEC_FILE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DO_APP_ID:-}" ]; then
+            echo "Defina a variable DO_APP_ID com o ID da app na DigitalOcean."
+            exit 1
+          fi
+          SPEC_PATH="${SPEC_FILE:-.do/app.yaml}"
+          test -f "${SPEC_PATH}"
+          doctl apps update "${DO_APP_ID}" --spec "${SPEC_PATH}" --wait

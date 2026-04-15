@@ -1,0 +1,39 @@
+# Dispara um novo deployment na DigitalOcean App Platform (código já vem do GitHub conectado à app).
+# Requer: Secrets → DIGITALOCEAN_ACCESS_TOKEN
+#          Variables → DO_APP_ID (ID da app em produção)
+name: deploy-digitalocean
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-do-production
+  cancel-in-progress: true
+
+jobs:
+  trigger-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar deployment na App Platform
+        env:
+          DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          DO_APP_ID: ${{ vars.DO_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DO_API_TOKEN:-}" ]; then
+            echo "Defina o secret DIGITALOCEAN_ACCESS_TOKEN no repositório."
+            exit 1
+          fi
+          if [ -z "${DO_APP_ID:-}" ]; then
+            echo "Defina a variable DO_APP_ID (ID numérico da app na DO) em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.digitalocean.com/v2/apps/${DO_APP_ID}/deployments" \
+            -d '{}' | head -c 4000
+          echo
+          echo "Deployment solicitado para a app ${DO_APP_ID}."

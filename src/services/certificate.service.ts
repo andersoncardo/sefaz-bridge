@@ -1,5 +1,5 @@
 import forge from 'node-forge';
-import { X509Certificate } from 'node:crypto';
+import { X509Certificate, createPrivateKey, createPublicKey, createSign, createVerify } from 'node:crypto';
 import tls from 'node:tls';
 import { AppError } from '../utils/errors.js';
 
@@ -12,12 +12,18 @@ export interface CertificateMetadata {
 }
 
 export interface TlsIdentity {
-  /** PEM para `https.Agent` (TLS 1.2 + SNI automático pelo stack Node) */
   cert: string;
   key: string;
   passphrase?: string;
-  /** Indica se o Node aceitou o PFX nativamente ou se houve necessidade de tratar como legado */
   source: 'node-pfx' | 'forge-pem';
+}
+
+export interface PfxValidationResult {
+  meta: CertificateMetadata;
+  tls: TlsIdentity;
+  fingerprintSha256: string;
+  /** CNPJ de 14 dígitos extraído do subject/serial, se encontrado */
+  certCnpj?: string;
 }
 
 function bufferToForgeBinary(buf: Buffer): string {
@@ -34,6 +40,7 @@ function extractPkcs12(pfxBuffer: Buffer, passphrase: string): forge.pkcs12.Pkcs
       statusCode: 400,
       code: 'INVALID_PFX',
       expose: true,
+      category: 'parse',
       cause: err,
     });
   }
@@ -48,6 +55,7 @@ function pickCertificate(p12: forge.pkcs12.Pkcs12Pfx): forge.pki.Certificate {
       statusCode: 400,
       code: 'CERT_BAG_MISSING',
       expose: true,
+      category: 'internal',
     });
   }
   return cert;
@@ -65,6 +73,7 @@ function pickPrivateKey(p12: forge.pkcs12.Pkcs12Pfx): forge.pki.PrivateKey {
     statusCode: 400,
     code: 'KEY_BAG_MISSING',
     expose: true,
+    category: 'internal',
   });
 }
 
@@ -78,9 +87,49 @@ function metadataFromPem(certPem: string): Omit<CertificateMetadata, 'normalized
   };
 }
 
+export function assertPrivateKeyMatchesCertificate(certPem: string, keyPem: string): void {
+  try {
+    const pub = createPublicKey({ key: certPem, format: 'pem' });
+    const priv = createPrivateKey({ key: keyPem, format: 'pem' });
+    const sign = createSign('sha256');
+    sign.update('sefaz-bridge-cert-bind');
+    sign.end();
+    const sig = sign.sign(priv);
+    const verify = createVerify('sha256');
+    verify.update('sefaz-bridge-cert-bind');
+    verify.end();
+    if (!verify.verify(pub, sig)) {
+      throw new AppError('Chave privada não corresponde ao certificado', {
+        statusCode: 400,
+        code: 'CERT_KEY_MISMATCH',
+        expose: true,
+        category: 'internal',
+      });
+    }
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    throw new AppError('Falha ao validar par certificado/chave', {
+      statusCode: 400,
+      code: 'CERT_KEY_CHECK_FAILED',
+      expose: true,
+      category: 'internal',
+      cause: e,
+    });
+  }
+}
+
+export function extractCnpjFromX509(x509: X509Certificate): string | undefined {
+  const blobs = [x509.subject, x509.serialNumber];
+  for (const blob of blobs) {
+    if (!blob) continue;
+    const matches = blob.match(/\d{14}/g);
+    if (matches?.length) return matches[matches.length - 1];
+  }
+  return undefined;
+}
+
 /**
  * Extrai metadados e material TLS em PEM (compatível com PFX legado via forge).
- * `normalizedFromLegacyPfx` fica true quando o Node não consegue abrir o PFX nativamente.
  */
 export function analyzeAndMaterializeTlsIdentity(
   pfxBuffer: Buffer,
@@ -113,6 +162,43 @@ export function analyzeAndMaterializeTlsIdentity(
   };
 }
 
+/**
+ * Validação completa para upload: senha, par cert/chave, fingerprint, CNPJ, expiração.
+ */
+export function validatePfxForUpload(
+  pfxBuffer: Buffer,
+  passphrase: string,
+  options: { allowExpired: boolean; declaredCnpjDigits?: string }
+): PfxValidationResult {
+  const { meta, tls } = analyzeAndMaterializeTlsIdentity(pfxBuffer, passphrase);
+  assertPrivateKeyMatchesCertificate(tls.cert, tls.key);
+
+  const x509 = new X509Certificate(tls.cert);
+  const fingerprintSha256 = x509.fingerprint256;
+  const certCnpj = extractCnpjFromX509(x509);
+
+  const notAfter = new Date(meta.validTo);
+  if (notAfter < new Date() && !options.allowExpired) {
+    throw new AppError('Certificado expirado', {
+      statusCode: 400,
+      code: 'CERT_EXPIRED',
+      expose: true,
+      category: 'parse',
+    });
+  }
+
+  if (options.declaredCnpjDigits && certCnpj && options.declaredCnpjDigits !== certCnpj) {
+    throw new AppError('CNPJ informado não corresponde ao certificado', {
+      statusCode: 400,
+      code: 'CNPJ_MISMATCH',
+      expose: true,
+      category: 'internal',
+    });
+  }
+
+  return { meta, tls, fingerprintSha256, certCnpj };
+}
+
 export function validatePfxExtension(filename: string | undefined): void {
   const name = (filename ?? '').toLowerCase();
   if (!name.endsWith('.pfx') && !name.endsWith('.p12')) {
@@ -120,6 +206,7 @@ export function validatePfxExtension(filename: string | undefined): void {
       statusCode: 400,
       code: 'INVALID_EXTENSION',
       expose: true,
+      category: 'internal',
     });
   }
 }

@@ -11,7 +11,11 @@ export interface CompanyCertificateMeta {
   issuer?: string;
   validFrom?: string;
   validTo?: string;
-  /** Indica se foi necessário normalizar PFX via node-forge */
+  /** SHA-256 do certificado (hex com `:` removido pelo Node — fingerprint256) */
+  fingerprintSha256?: string;
+  /** CNPJ extraído do certificado (14 dígitos), quando identificado */
+  certCnpj?: string;
+  /** Indica se foi necessário tratar PFX como legado (Node não abriu nativamente) */
   normalizedFromLegacyPfx?: boolean;
   storedAt: string;
 }
@@ -28,6 +32,9 @@ export interface DistribuicaoDocument {
   nsu: string;
   schema: string;
   xml: string;
+  /** Metadados leves do documento decodificado */
+  xmlCharLength?: number;
+  rootTag?: string;
 }
 
 export interface DistribuicaoResponsePayload {
@@ -47,4 +54,6 @@ export interface CertificateUploadResult {
   issuer: string;
   validFrom: string;
   validTo: string;
+  fingerprintSha256: string;
+  certCnpj?: string;
 }
