@@ -2,6 +2,91 @@
 
 Microserviço **Node.js 22 + TypeScript + Fastify** para integração técnica com a **SEFAZ** (SOAP 1.2 + **mTLS**), pensado para a **DigitalOcean App Platform** (stateless, sem volume persistente).
 
+## Deploy rápido na DigitalOcean
+
+> O botão oficial da DigitalOcean exige repositório **público** no GitHub (ou GitLab). Repositório privado: use *Apps → Create App → GitHub* manualmente.
+
+1. **Substitua** `YOUR_GITHUB_USER` em dois lugares pelo seu usuário ou organização:
+   - no link do botão abaixo;
+   - em [`.do/deploy.template.yaml`](.do/deploy.template.yaml), no campo `repo_clone_url` (deve ser o **mesmo** repositório que você está implantando).
+2. Faça **push** do repositório para o GitHub (branch `main`).
+3. Clique no botão — você será levado ao painel da DigitalOcean (faça login se precisar).
+4. No assistente, **revise as variáveis de ambiente** (especialmente as marcadas como secret). Ajuste `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` para o seu **Space**.
+5. Clique em **Deploy** e aguarde o build (Dockerfile + health em `/health`).
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/YOUR_GITHUB_USER/sefaz-bridge/tree/main)
+
+Documentação do botão: [How to Add a "Deploy to DigitalOcean" Button](https://docs.digitalocean.com/products/app-platform/how-to/add-deploy-do-button/).
+
+---
+
+## Passo a passo completo (DigitalOcean App Platform + Spaces)
+
+Siga na ordem na primeira vez; depois o botão ou o GitHub *deploy on push* cobre a maior parte.
+
+### 1. Conta e faturamento
+
+1. Crie uma conta em [DigitalOcean](https://www.digitalocean.com/).
+2. Cadastre um método de pagamento (cartão ou PayPal).
+
+### 2. Spaces (armazenamento dos certificados)
+
+1. No menu: **Spaces Object Storage** → **Create a Space**.
+2. Escolha **região** (ex.: `NYC3`), nome do **bucket** (único global), privacidade (pode manter listagem restrita).
+3. Em **API** → **Spaces Keys** → **Generate New Key**: guarde **Access Key** e **Secret** (equivalentes a `SPACES_KEY` e `SPACES_SECRET`).
+4. Anote o **endpoint** da região (ex.: `https://nyc3.digitaloceanspaces.com`) e a **região** (`nyc3`).
+
+### 3. Repositório GitHub
+
+1. Envie este projeto para um repositório GitHub (`main` com `Dockerfile` e `.do/deploy.template.yaml` na raiz).
+2. Para usar o **botão de deploy rápido**, o repositório precisa ser **público** (regra da DigitalOcean).
+
+### 4. Ajustar o template de um clique
+
+1. Abra [`.do/deploy.template.yaml`](.do/deploy.template.yaml).
+2. Troque `YOUR_GITHUB_USER` em `repo_clone_url` pelo seu usuário ou org (mesmo nome que aparece na URL do GitHub).
+3. Confira `SPACES_BUCKET`, `SPACES_REGION` e `SPACES_ENDPOINT` no arquivo (ou altere depois no painel da app).
+
+### 5. Implantar a app
+
+**Opção A — Botão (repositório público)**  
+Use o botão **Deploy to DigitalOcean** no topo deste README (com o link já apontando para `github.com/SEU_USUARIO/sefaz-bridge/tree/main`).
+
+**Opção B — Painel (qualquer visibilidade do repo)**  
+1. **Apps** → **Create App** → **GitHub** → autorize e selecione o repositório e a branch `main`.  
+2. A DigitalOcean deve detectar o **Dockerfile**.  
+3. Defina **HTTP Port** `3000` e health check em **`/health`**.  
+4. Adicione as variáveis de ambiente (veja tabela no README e `.env.example`).
+
+### 6. Secrets obrigatórios na app (Runtime)
+
+Configure no painel da app (tipo **SECRET** / criptografado onde existir):
+
+| Variável | O que é |
+|----------|---------|
+| `SEFAZ_BRIDGE_SECRET` | Token Bearer que o app principal envia no header `Authorization`. |
+| `CERT_ENCRYPTION_KEY` | 32 bytes: `openssl rand -base64 32` (cole o resultado). |
+| `SPACES_KEY` / `SPACES_SECRET` | Chaves do Space. |
+
+Mantenha também:
+
+- `APP_ENV=production`
+- `STORAGE_DRIVER=spaces`
+- `NODE_ENV=production`
+- Dados do bucket (`SPACES_BUCKET`, `SPACES_REGION`, `SPACES_ENDPOINT`, `SPACES_PREFIX`).
+
+### 7. Domínio e testes
+
+1. Anote a URL gerada pela App Platform (ou anexe um domínio em **Settings → Domains**).
+2. Teste: `curl -sS "https://SUA-APP.ondigitalocean.app/health"` — deve retornar `"ok": true` e `storage.ok: true` (Spaces acessível).
+3. Faça upload de certificado com `curl` usando o Bearer (exemplos mais abaixo no README).
+
+### 8. Deploy contínuo (opcional)
+
+- Com o repositório conectado à app, ative **Deploy on push** na DigitalOcean **ou** use os workflows em [`.github/workflows/`](.github/workflows/) com `DIGITALOCEAN_ACCESS_TOKEN` e `DO_APP_ID`.
+
+---
+
 ## O que faz
 
 - Upload de **certificado A1 (.pfx)** com validação forte (senha, par certificado/chave, fingerprint SHA-256, CNPJ extraído, bloqueio de expirado com override administrativo opcional).
@@ -127,17 +212,9 @@ Rotação: no novo upload, objetos anteriores da empresa são removidos antes de
 
 `company-<id>/certificate.pfx.enc` (conteúdo combinado cifrado) + `meta.json`. Somente para **desenvolvimento**.
 
-## DigitalOcean App Platform
+## App spec versionado (alternativa ao botão)
 
-1. Crie um **Space** e chaves de API com acesso ao bucket.
-2. Crie a **App** a partir do repositório (Dockerfile) **ou** importe `.do/app.yaml` (ajuste `github.repo`, `region`, bucket e prefixos).
-3. Configure **Runtime Environment**:
-   - `APP_ENV=production` (ou `staging`)
-   - `STORAGE_DRIVER=spaces`
-   - Secrets: `SEFAZ_BRIDGE_SECRET`, `CERT_ENCRYPTION_KEY`, `SPACES_KEY`, `SPACES_SECRET`
-   - Variáveis públicas: bucket, region, endpoint, `SPACES_PREFIX`, URLs SEFAZ, limites.
-4. Health check HTTP: **`/health`** (a app spec de exemplo já define `health_check.http_path`).
-5. **Não** dependa de volume persistente: certificados vivem no **Spaces** cifrados.
+O ficheiro [`.do/app.yaml`](.do/app.yaml) é um exemplo de spec com **GitHub** como fonte (ajuste `github.repo`). Pode importá-lo no painel ou aplicá-lo com `doctl apps update --spec` (ver workflow `deploy-app-spec.yml`). O fluxo detalhado de Spaces e secrets está na secção **Passo a passo completo** acima.
 
 ## Deploy automático (GitHub Actions)
 

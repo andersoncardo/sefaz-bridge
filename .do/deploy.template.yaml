@@ -1,0 +1,71 @@
+# Template para o botão "Deploy to DigitalOcean".
+# Obrigatório: chave raiz `spec:` (documentação DO).
+# Antes de publicar: troque YOUR_GITHUB_USER pelo seu usuário ou organização (deve bater com o link do botão no README).
+
+spec:
+  name: sefaz-bridge
+  region: nyc
+  services:
+    - name: api
+      dockerfile_path: Dockerfile
+      source_dir: /
+      http_port: 3000
+      instance_count: 1
+      instance_size_slug: basic-xxs
+      git:
+        branch: main
+        repo_clone_url: https://github.com/YOUR_GITHUB_USER/sefaz-bridge.git
+      health_check:
+        http_path: /health
+        initial_delay_seconds: 20
+        period_seconds: 30
+        timeout_seconds: 5
+        success_threshold: 1
+        failure_threshold: 3
+      routes:
+        - path: /
+      envs:
+        - key: PORT
+          value: "3000"
+        - key: NODE_ENV
+          value: production
+        - key: APP_ENV
+          value: production
+        - key: LOG_LEVEL
+          value: info
+        - key: STORAGE_DRIVER
+          value: spaces
+        - key: SPACES_PREFIX
+          value: sefaz-bridge/production/
+        - key: SEFAZ_HTTP_TIMEOUT_MS
+          value: "90000"
+        - key: SEFAZ_HTTP_MAX_RETRIES
+          value: "2"
+        - key: RATE_LIMIT_MAX
+          value: "180"
+        - key: RATE_LIMIT_CERT_MAX
+          value: "30"
+        - key: SPACES_BUCKET
+          value: your-bridge-bucket
+        - key: SPACES_REGION
+          value: nyc3
+        - key: SPACES_ENDPOINT
+          value: https://nyc3.digitaloceanspaces.com
+        - key: SEFAZ_DISTRIBUICAO_URL
+          value: https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx
+        - key: SEFAZ_BRIDGE_SECRET
+          scope: RUN_TIME
+          type: SECRET
+          value: troque-pelo-bearer-seguro
+        - key: CERT_ENCRYPTION_KEY
+          scope: RUN_TIME
+          type: SECRET
+          value: use-openssl-rand-base64-32
+        - key: SPACES_KEY
+          scope: RUN_TIME
+          type: SECRET
+          value: spaces-access-key
+        - key: SPACES_SECRET
+          scope: RUN_TIME
+          type: SECRET
+          value: spaces-secret-key
