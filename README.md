@@ -19,6 +19,30 @@ Repositório oficial: **[github.com/andersoncardo/sefaz-bridge](https://github.c
 
 Documentação do botão: [How to Add a "Deploy to DigitalOcean" Button](https://docs.digitalocean.com/products/app-platform/how-to/add-deploy-do-button/).
 
+### Erro: *Account does not have access to the repo*
+
+A DigitalOcean está a usar uma **ligação ao GitHub** que **não inclui** esse repositório (ou está ligada a **outra** conta GitHub).
+
+1. **Confirme a conta**  
+   O repositório é [andersoncardo/sefaz-bridge](https://github.com/andersoncardo/sefaz-bridge). A conta com que entra na **DigitalOcean** tem de ser a mesma pessoa/org que **possui** o repo, **ou** tem de existir permissão explícita para a app da DO nesse repo.
+
+2. **Dar acesso no GitHub (recomendado)**  
+   - No GitHub: **Settings** (da sua conta ou da organização) → **Applications** → **Installed GitHub Apps** → **DigitalOcean** → **Configure**.  
+   - Em **Repository access**, escolha **All repositories** ou **Only select repositories** e marque **`andersoncardo/sefaz-bridge`**.  
+   - Guarde. Volte à DigitalOcean e tente criar a app de novo (ou o deploy pelo botão).
+
+3. **Religar a partir da DigitalOcean**  
+   - **Apps** → **Create App** → em **GitHub**, use **Manage access** / **Edit your GitHub permissions** (o texto pode variar) e conclua o OAuth de novo, garantindo acesso ao repositório certo.
+
+4. **Repositório de outra pessoa**  
+   Se o código **não** for seu, faça um **fork** para a **sua** conta e ligue a DO ao **seu** GitHub; depois use o seu `usuario/sefaz-bridge` no botão e no `repo_clone_url` do [`.do/deploy.template.yaml`](.do/deploy.template.yaml).
+
+5. **Organização no GitHub**  
+   Se o repo estiver numa **org**, um administrador pode ter de **aprovar** a aplicação DigitalOcean para essa org (**Third-party access** / pedido de instalação da app).
+
+6. **Repo privado**  
+   O botão “Deploy to DO” costuma exigir repo **público**. Com repo **privado**, use **Create App** no painel e garanta o passo 2 para a app da DO ter acesso a esse repo privado.
+
 ---
 
 ## Passo a passo completo (DigitalOcean App Platform + Spaces)
