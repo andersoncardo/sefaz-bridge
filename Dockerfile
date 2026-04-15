@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --from=build /app/dist ./dist
+
+RUN mkdir -p /data/certificates && chown -R node:node /data
+USER node
+
+ENV CERT_STORAGE_PATH=/data/certificates
+EXPOSE 3000
+
+CMD ["node", "dist/server.js"]
