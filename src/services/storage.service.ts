@@ -5,5 +5,5 @@ export {
   LocalStorageService,
   SpacesStorageService,
   tempProcessingDir,
-} from './storage/index.js';
-export type { CertificateStoragePayload, IStorageService, StorageHealthResult } from './storage/index.js';
+} from './storage-layer/index.js';
+export type { CertificateStoragePayload, IStorageService, StorageHealthResult } from './storage-layer/index.js';

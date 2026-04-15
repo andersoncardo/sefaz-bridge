@@ -2,7 +2,7 @@ node_modules
 dist
 .git
 .env
-# Só dados locais na raiz — não use "storage" solto (excluiria src/services/storage/ no COPY).
-/storage
 *.md
 .DS_Store
+# Dados locais de certificados (raiz do repo) — não enviar para a imagem
+storage/certificates

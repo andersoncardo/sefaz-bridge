@@ -279,7 +279,7 @@ Na **App Platform**, defina `APP_ENV` e `STORAGE_DRIVER=spaces` via env da app (
 
 ## Estrutura relevante
 
-- `src/services/storage/` — `IStorageService`, `LocalStorageService`, `SpacesStorageService`, fábrica.
+- `src/services/storage-layer/` — `IStorageService`, `LocalStorageService`, `SpacesStorageService`, fábrica.
 - `src/utils/crypto-envelope.ts` — AES-256-GCM.
 - `src/utils/bridge-guard.ts` — Bearer + HMAC opcional.
 - `src/config/bootstrap.ts` — validação de ambiente na subida.
