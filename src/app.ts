@@ -7,7 +7,7 @@ import { companiesRoutes } from './routes/companies.js';
 import { healthRoutes } from './routes/health.js';
 import { sefazRoutes } from './routes/sefaz.js';
 import { isAppError } from './utils/errors.js';
-import { rootLogger } from './utils/logger.js';
+import { fastifyLoggerOptions } from './utils/logger.js';
 
 export async function buildApp() {
   const corsOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -16,7 +16,7 @@ export async function buildApp() {
     .filter(Boolean);
 
   const app = Fastify({
-    logger: rootLogger,
+    logger: fastifyLoggerOptions,
     genReqId: (req) => {
       const h = req.headers['x-request-id'];
       if (typeof h === 'string' && h.trim()) return h.trim();
