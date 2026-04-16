@@ -65,6 +65,19 @@ export async function buildApp() {
   app.setErrorHandler((err, req, reply) => {
     if (reply.sent) return;
 
+    const errCode = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code) : '';
+    if (errCode === 'FST_ERR_CTP_INVALID_JSON_BODY') {
+      req.log.warn({ err, reqId: req.id }, 'corpo JSON inválido (Content-Type application/json)');
+      void reply.status(400).send({
+        success: false,
+        error:
+          'JSON inválido no corpo da requisição. Se `companyId` for texto (ex.: UUID), no Postman/raw JSON use aspas: "companyId": "{{seu_uuid}}", e não companyId sem aspas.',
+        code: 'INVALID_JSON_BODY',
+        category: 'parse',
+      });
+      return;
+    }
+
     if (isAppError(err)) {
       void reply.status(err.statusCode).send({
         success: false,

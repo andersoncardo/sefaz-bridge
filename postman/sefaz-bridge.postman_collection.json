@@ -1,0 +1,171 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-sefaz-bridge-api",
+    "name": "sefaz-bridge",
+    "description": "Collection para o bridge SEFAZ (Fastify).\n\n**Auth:** Bearer `{{bridgeToken}}` (= `SEFAZ_BRIDGE_SECRET`).\n\n**companyId (UUID ou texto):** nos bodies JSON use **sempre** `\"companyId\": \"{{companyId}}\"` (com aspas). Se usar `\"companyId\": {{companyId}}` sem aspas, um UUID vira texto solto e o JSON fica **inválido**.\n\n**Certificado:** o `companyId` na URL do upload (`POST .../companies/:companyId/certificate`) tem de ser **o mesmo** valor enviado no JSON do sync/distribuição — caso contrário aparece `CERT_NOT_FOUND`.\n\n**HMAC:** se `BRIDGE_HMAC_SECRET` estiver ativo, adicione script de pré-request ou desative em dev.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "bridgeToken", "value": "change-me" },
+    { "key": "companyId", "value": "ffc858fe-ab04-4c3a-8298-4f2299263b2e" },
+    { "key": "certPassword", "value": "" },
+    { "key": "cnpj", "value": "08174605000100" },
+    { "key": "cUF", "value": "21" },
+    { "key": "tpAmb", "value": "1" },
+    { "key": "ultNSU", "value": "000000000000000" },
+    { "key": "documentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Público",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Certificado",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{bridgeToken}}", "type": "string" }]
+      },
+      "item": [
+        {
+          "name": "POST Upload certificado (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "certificate",
+                  "description": "Ficheiro .pfx (campo certificate ou file)",
+                  "type": "file",
+                  "src": ""
+                },
+                {
+                  "key": "password",
+                  "value": "{{certPassword}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/api/companies/{{companyId}}/certificate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "API v1",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{bridgeToken}}", "type": "string" }]
+      },
+      "item": [
+        {
+          "name": "POST SEFAZ Sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": \"{{companyId}}\",\n  \"cnpj\": \"{{cnpj}}\",\n  \"cUF\": \"{{cUF}}\",\n  \"tpAmb\": \"{{tpAmb}}\",\n  \"force\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/sefaz/sync"
+          }
+        },
+        {
+          "name": "GET SEFAZ Sync state",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/sync-state/{{companyId}}?tpAmb={{tpAmb}}&cnpj={{cnpj}}"
+          }
+        },
+        {
+          "name": "GET SEFAZ Documents (list)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents?companyId={{companyId}}&tpAmb={{tpAmb}}&cnpj={{cnpj}}&limit=50&sort=createdAt&sortDir=desc"
+          }
+        },
+        {
+          "name": "GET SEFAZ Document (meta)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "GET SEFAZ Document XML",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents/{{documentId}}/xml"
+          }
+        },
+        {
+          "name": "GET SEFAZ Document JSON",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents/{{documentId}}/json"
+          }
+        },
+        {
+          "name": "GET SEFAZ Document content (format=xml)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents/{{documentId}}/content?format=xml"
+          }
+        },
+        {
+          "name": "GET SEFAZ Document content (format=json)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }],
+            "url": "{{baseUrl}}/api/v1/sefaz/documents/{{documentId}}/content?format=json"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Legado",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{bridgeToken}}", "type": "string" }]
+      },
+      "item": [
+        {
+          "name": "POST Distribuição (SOAP direto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "{{$guid}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyId\": \"{{companyId}}\",\n  \"cnpj\": \"{{cnpj}}\",\n  \"cUF\": \"{{cUF}}\",\n  \"tpAmb\": \"{{tpAmb}}\",\n  \"ultNSU\": \"{{ultNSU}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sefaz/distribuicao"
+          }
+        }
+      ]
+    }
+  ]
+}
