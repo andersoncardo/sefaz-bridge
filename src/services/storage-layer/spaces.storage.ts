@@ -1,7 +1,6 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
-  HeadBucketCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -43,11 +42,14 @@ export class SpacesStorageService implements IStorageService {
         category: 'internal',
       });
     }
+    // DigitalOcean Spaces costuma exigir path-style (https://REGION.digitaloceanspaces.com/BUCKET/...)
+    const forcePathStyle = process.env.SPACES_FORCE_PATH_STYLE !== 'false';
+
     this.client = new S3Client({
       region,
       endpoint,
       credentials: { accessKeyId: key, secretAccessKey: secret },
-      forcePathStyle: false,
+      forcePathStyle,
     });
   }
 
@@ -181,13 +183,17 @@ export class SpacesStorageService implements IStorageService {
 
   async healthCheck(): Promise<StorageHealthResult> {
     try {
-      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1, Prefix: this.prefix })
+      );
       return { ok: true, driver: 'spaces' };
     } catch (e) {
+      const err = e as Error & { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+      const hint = [err.name, err.Code, err.message].filter(Boolean).join(' — ');
       return {
         ok: false,
         driver: 'spaces',
-        message: e instanceof Error ? e.message : 'HeadBucket falhou',
+        message: hint || 'ListObjects no bucket falhou (credenciais, região ou nome do bucket?)',
       };
     }
   }

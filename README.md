@@ -118,7 +118,7 @@ Mantenha também:
 - Modo **local** (`STORAGE_DRIVER=local`) apenas para desenvolvimento: arquivos cifrados em disco, **sem senha em texto plano**.
 - Chamadas **SOAP 1.2** com timeout, **retry** só para falhas de rede transitórias, classificação de erros (`tls`, `soap`, `parse`, `auth`, `storage`, `internal`).
 - Autenticação **Bearer** + opcional **HMAC** com timestamp (anti-replay), **rate limiting**, **CORS** opcional, **`X-Request-Id`**.
-- **`GET /health`** com verificação do storage (HTTP **503** se o backend de certificados estiver indisponível).
+- **`GET /health`** com verificação do storage; por omissão **503** se o Spaces falhar (readiness na DO). Use **`HEALTH_REQUIRE_STORAGE=false`** para o probe devolver **200** enquanto ajusta `SPACES_*`.
 
 ## Requisitos
 
@@ -151,8 +151,10 @@ openssl rand -base64 32
 | `APP_ENV` | **`production`**, **`staging`** ou **`development`**. Controla exigência de **Spaces** e validação de secrets. |
 | `STORAGE_DRIVER` | `local` (dev) ou `spaces` (produção/staging na DO). |
 | `CERT_STORAGE_PATH` | Base do storage **local** cifrado (ignorado quando `spaces`). |
-| `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_ENDPOINT` | Configuração do bucket Spaces. |
+| `SPACES_BUCKET`, `SPACES_REGION`, `SPACES_ENDPOINT` | Configuração do bucket Spaces (região e endpoint devem coincidir, ex.: `nyc3` + `https://nyc3.digitaloceanspaces.com`). |
 | `SPACES_PREFIX` | Prefixo de chaves por ambiente (ex.: `sefaz-bridge/production/`). |
+| `SPACES_FORCE_PATH_STYLE` | Omissão = path-style (recomendado na DO). `false` só em cenários especiais. |
+| `HEALTH_REQUIRE_STORAGE` | Omissão = exigir storage OK (**503** se falhar). `false` = **200** no `/health` mesmo com Spaces em erro (deploy sobe; corrija credenciais). |
 | `SEFAZ_DISTRIBUICAO_URL` | URL fixa do `.asmx` (senão usa padrão nacional por `tpAmb`). |
 | `SEFAZ_HTTP_TIMEOUT_MS` | Timeout HTTP (padrão `90000`). |
 | `SEFAZ_HTTP_MAX_RETRIES` | Retries só para rede (padrão `2`). |
@@ -209,7 +211,9 @@ Payload canônico:
 
 ### `GET /health`
 
-Público. Verifica storage (Spaces `HeadBucket` ou disco local). Resposta inclui `uptime_seconds`, `app_env`, `storage`.
+Público. Verifica storage (Spaces: listagem no bucket com o prefixo configurado; local: escrita no diretório).  
+Corpo inclui `alive`, `ready`, `storage`, `uptime_seconds`. Com **`HEALTH_REQUIRE_STORAGE=false`**, o HTTP fica **200** mesmo se `ready` for false (útil na App Platform até as credenciais do Space estarem corretas).  
+Cliente S3 usa **`SPACES_FORCE_PATH_STYLE`** (omissão compatível com DigitalOcean Spaces; defina `false` só se necessário).
 
 ### `POST /api/companies/:companyId/certificate`
 
