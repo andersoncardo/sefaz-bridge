@@ -6,3 +6,4 @@ dist
 .DS_Store
 # Dados locais de certificados (raiz do repo) — não enviar para a imagem
 storage/certificates
+storage/sefaz-blobs

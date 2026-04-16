@@ -119,6 +119,7 @@ Mantenha também:
 - Chamadas **SOAP 1.2** com timeout, **retry** só para falhas de rede transitórias, classificação de erros (`tls`, `soap`, `parse`, `auth`, `storage`, `internal`).
 - Autenticação **Bearer** + opcional **HMAC** com timestamp (anti-replay), **rate limiting**, **CORS** opcional, **`X-Request-Id`**.
 - **`GET /health`** com verificação do storage; por omissão **503** se o Spaces falhar (readiness na DO). Use **`HEALTH_REQUIRE_STORAGE=false`** para o probe devolver **200** enquanto ajusta `SPACES_*`.
+- **API REST `/api/v1`** consumida por apps internos (ex.: Lovable): o bridge expõe **JSON + HTTP**; **SOAP, mTLS, XML e docZip** ficam encapsulados. Uma chamada de sync faz **uma rodada** `nfeDistDFeInteresse` e devolve `hasMore` / `nextUltNSU` para o cliente orquestrar leituras seguintes.
 
 ## Requisitos
 
@@ -165,6 +166,8 @@ openssl rand -base64 32
 | `RATE_LIMIT_CERT_MAX`, `RATE_LIMIT_CERT_WINDOW` | Limite no upload de certificado. |
 | `CORS_ORIGINS` | Lista separada por vírgula; vazio = sem CORS (recomendado server-to-server). |
 | `BRIDGE_HMAC_MAX_SKEW_SEC` | Janela do relógio para HMAC (padrão `300`). |
+| `SEFAZ_BLOB_LOCAL_PATH` | Base no disco para artefatos `sefaz/...` quando `STORAGE_DRIVER=local` (omissão: `./storage/sefaz-blobs`). |
+| `SYNC_CACHE_TTL_SEC` | TTL em segundos do cache in-process da resposta de `POST /api/v1/sefaz/sync` (omissão: `300`). |
 
 ### Secrets (nunca commitar)
 
@@ -225,6 +228,43 @@ Override de expirado: header `X-Cert-Override-Token` quando `ADMIN_CERT_OVERRIDE
 
 JSON: `companyId`, `cnpj`, `cUF`, `tpAmb`, `ultNSU`.
 
+### API REST v1 (`/api/v1`) — middleware fiscal
+
+Todas as rotas abaixo usam o mesmo **`bridgeProtectedGuard`**: **Bearer** (`Authorization: Bearer <SEFAZ_BRIDGE_SECRET>`) e, se configurado, **HMAC** (mesmas regras da secção *Autenticação*; para `GET`, o fingerprint do corpo é `empty`).
+
+**Fluxo:** o app principal chama apenas REST/JSON; o bridge carrega o certificado no storage, consulta a SEFAZ, grava **XML bruto** e **JSON técnico normalizado** (não é DTO de negócio do produto), mantém **estado de NSU** por combinação **empresa + `tpAmb` + CNPJ**, aplica **cache in-process** (por instância; com várias réplicas da App Platform o comportamento é *eventual*) e devolve resumos com chaves lógicas de storage.
+
+#### `POST /api/v1/sefaz/sync`
+
+Body JSON:
+
+- `companyId`, `cnpj` (14 dígitos), `cUF` (2 dígitos), `tpAmb` (`1` ou `2`)
+- `force` (opcional, boolean): `true` ignora cache de sync e invalida a entrada da chave atual.
+
+O **`ultNSU` enviado pelo cliente não é usado** como fonte de verdade: o bridge lê/grava `ultNSU` em `sync-state.json` no prefixo fiscal (ver *Artefatos SEFAZ*). Uma única **rodada SOAP** por request; resposta inclui `hasMore` e `nextUltNSU` (último `ultNSU` retornado pela SEFAZ neste lote) para o cliente ou um scheduler disparar novas syncs até drenar.
+
+Resposta (resumo): `success`, `source` (`sefaz` \| `cache`), `cached`, `companyId`, `cStat`, `xMotivo`, `ultNSU`, `maxNSU`, `documentsCount`, `documents[]` (metadados + `xmlStorageKey` / `jsonStorageKey`), `hasMore`, `nextUltNSU`.
+
+#### `GET /api/v1/sefaz/sync-state/:companyId`
+
+Query obrigatória: `tpAmb`, `cnpj` (14 dígitos). Devolve estado persistido: `ultNSU`, `maxNSU`, `lastSyncAt`, `lastCStat`, `lastXMotivo`, `cacheUntil`, `lastSource` (`sefaz` \| `cache`), `lastRequestKey`, etc.
+
+#### `GET /api/v1/sefaz/documents`
+
+Query obrigatória: `companyId`, `tpAmb`, `cnpj`. Filtros opcionais: `from`, `to`, `schema`, `tipoDocumento`, `chaveNFe`. Paginação: `cursor` (opaco), `limit` (1–500, omissão 50), `sort` (`dataEmissao` \| `createdAt`), `sortDir` (`asc` \| `desc`). Corpo: `{ items, nextCursor, hasMore }`.
+
+#### `GET /api/v1/sefaz/documents/:id`
+
+Metadados do documento. O **`id`** é **base64url** de `companyId|tpAmb|cnpj|nsu` (UTF-8), opaco para o cliente.
+
+#### `GET /api/v1/sefaz/documents/:id/xml` e `.../json`
+
+XML bruto (`Content-Type: application/xml`) ou objeto JSON já parseado a partir do blob normalizado.
+
+#### `GET /api/v1/sefaz/documents/:id/content?format=xml|json`
+
+Atalho único com query `format`.
+
 ## Layout de storage
 
 ### Spaces (`STORAGE_DRIVER=spaces`)
@@ -235,6 +275,17 @@ Objetos por empresa sob `${SPACES_PREFIX}companies/<id>/`:
 - `meta.json` — metadados (subject, issuer, validade, fingerprint, CNPJ do cert, etc.). **Sem segredos em claro.**
 
 Rotação: no novo upload, objetos anteriores da empresa são removidos antes de gravar.
+
+### Artefatos SEFAZ (API v1; mesmo bucket/prefixo em Spaces, ou pasta local)
+
+Chaves lógicas sob `${SPACES_PREFIX}` (Spaces) ou `SEFAZ_BLOB_LOCAL_PATH` (local), particionadas por **empresa + ambiente + CNPJ**:
+
+`sefaz/<companyId>/<tpAmb>/<cnpj14>/`
+
+- `sync-state.json` — `ultNSU`, `maxNSU`, último `cStat`/`xMotivo`, `cache_until`, `last_source`, `last_request_key`, timestamps.
+- `index/<nsu>.json` — índice por NSU (metadados + `rootTag`, `lastSeenAt`, chaves dos blobs).
+- `xml/raw/<nsu>.xml` — XML decodificado do `docZip`.
+- `json/<nsu>.json` — JSON **técnico** normalizado (`kind: sefaz_bridge_technical_v1`).
 
 ### Local (`STORAGE_DRIVER=local`)
 
@@ -280,10 +331,16 @@ Na **App Platform**, defina `APP_ENV` e `STORAGE_DRIVER=spaces` via env da app (
 - Não são logados: senha do certificado, PEM completo, corpo SOAP em produção **salvo** `ALLOW_DEBUG_SOAP` / `DEBUG_SOAP_IN_PROD`.
 - CNPJ em logs aparece **mascarado** quando aplicável.
 - Respostas de erro expõem `category` para diagnóstico (`tls`, `soap`, `parse`, `auth`, `storage`, `internal`).
+- No fluxo **`/api/v1/sefaz/sync`**, logs estruturados incluem `reqId` (id da requisição Fastify), `companyId`, `tpAmb`, `cacheHit`, `cStat`, `xMotivo`, `documentsCount`, `hasMore`, `durationMs` quando aplicável.
 
 ## Estrutura relevante
 
 - `src/services/storage-layer/` — `IStorageService`, `LocalStorageService`, `SpacesStorageService`, fábrica.
+- `src/services/sefaz-persistence/` — `ISefazBlobStore`, paths fiscais, fábrica alinhada ao `STORAGE_DRIVER`.
+- `src/repositories/` — estado de sync e índice de documentos (MVP em JSON no blob; assinatura pronta para BD).
+- `src/services/sefaz-sync.service.ts` — orquestração sync + cache + lock por `companyId+tpAmb+cnpj`.
+- `src/services/normalization/nfe-xml-normalizer.ts` — XML → JSON técnico.
+- `src/routes/sefaz-v1.routes.ts` — rotas `/api/v1/sefaz/*`.
 - `src/utils/crypto-envelope.ts` — AES-256-GCM.
 - `src/utils/bridge-guard.ts` — Bearer + HMAC opcional.
 - `src/config/bootstrap.ts` — validação de ambiente na subida.

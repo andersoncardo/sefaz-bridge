@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { companiesRoutes } from './routes/companies.js';
 import { healthRoutes } from './routes/health.js';
 import { sefazRoutes } from './routes/sefaz.js';
+import { sefazV1Routes } from './routes/sefaz-v1.routes.js';
 import { isAppError } from './utils/errors.js';
 import { fastifyLoggerOptions } from './utils/logger.js';
 
@@ -86,6 +87,7 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(companiesRoutes);
   await app.register(sefazRoutes);
+  await app.register(sefazV1Routes, { prefix: '/api/v1' });
 
   return app;
 }
