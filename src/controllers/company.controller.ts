@@ -1,7 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { CertificateUploadResult, CompanyId } from '../types/index.js';
-import { validatePfxExtension, validatePfxForUpload } from '../services/certificate.service.js';
+import {
+  normalizeCertificateUploadFilename,
+  validatePfxExtension,
+  validatePfxForUpload,
+} from '../services/certificate.service.js';
 import { getStorageService } from '../services/storage.service.js';
 import { AppError } from '../utils/errors.js';
 import { maskCnpj } from '../utils/masking.js';
@@ -59,9 +63,9 @@ export async function uploadCompanyCertificate(request: FastifyRequest, reply: F
       if (part.fieldname !== 'certificate' && part.fieldname !== 'file') {
         continue;
       }
-      filename = part.filename;
-      validatePfxExtension(part.filename);
       pfxBuffer = await part.toBuffer();
+      filename = normalizeCertificateUploadFilename(part.filename);
+      validatePfxExtension(filename, pfxBuffer);
     } else {
       const field = part.fieldname;
       const value = part.value;
@@ -93,8 +97,6 @@ export async function uploadCompanyCertificate(request: FastifyRequest, reply: F
       category: 'auth',
     });
   }
-
-  validatePfxExtension(filename);
 
   const declaredDigits = cnpj?.replace(/\D/g, '') ?? '';
   const allowExpired =

@@ -199,14 +199,42 @@ export function validatePfxForUpload(
   return { meta, tls, fingerprintSha256, certCnpj };
 }
 
-export function validatePfxExtension(filename: string | undefined): void {
-  const name = (filename ?? '').toLowerCase();
-  if (!name.endsWith('.pfx') && !name.endsWith('.p12')) {
-    throw new AppError('Arquivo deve ser .pfx ou .p12', {
+/**
+ * Alguns clientes (ex.: Postman) enviam `filename` vazio, com aspas RFC ou só o basename errado;
+ * o conteúdo continua a ser um PKCS#12 válido — validação forte fica em `validatePfxForUpload`.
+ */
+export function normalizeCertificateUploadFilename(filename: string | undefined): string {
+  let s = (filename ?? '').trim();
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    s = s.slice(1, -1).trim();
+  }
+  const base = s.split(/[/\\]/).pop() ?? s;
+  return base.trim();
+}
+
+/** PKCS#12 em DER costuma começar por SEQUENCE ASN.1 (`0x30`). */
+export function bufferLooksLikePkcs12Der(buf: Buffer): boolean {
+  if (!buf || buf.length < 64) return false;
+  return buf[0] === 0x30;
+}
+
+/**
+ * Aceita extensão .pfx/.p12 (case-insensitive) **ou** buffer com início típico de PKCS#12 DER
+ * quando o nome declarado falha (filename vazio / cliente sem extensão).
+ */
+export function validatePfxExtension(filename: string | undefined, buffer?: Buffer): void {
+  const name = normalizeCertificateUploadFilename(filename).toLowerCase();
+  const extOk = name.endsWith('.pfx') || name.endsWith('.p12');
+  if (extOk) return;
+  if (buffer && bufferLooksLikePkcs12Der(buffer)) return;
+  const hint = name ? `"${name.slice(0, 120)}${name.length > 120 ? '…' : ''}"` : '(nome vazio)';
+  throw new AppError(
+    `Arquivo deve ser .pfx ou .p12 (ou PKCS#12 DER reconhecível). Nome recebido: ${hint}.`,
+    {
       statusCode: 400,
       code: 'INVALID_EXTENSION',
       expose: true,
-      category: 'internal',
-    });
-  }
+      category: 'parse',
+    }
+  );
 }
